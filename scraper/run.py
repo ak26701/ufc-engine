@@ -148,7 +148,7 @@ def run(incremental: bool = False):
             })
 
             if fight_id is None:
-                print(f"    Already in DB — skipping stats")
+                print(f"    Could not resolve fight ID — skipping")
                 continue
 
             # Upsert stats for both fighters

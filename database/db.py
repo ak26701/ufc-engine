@@ -73,7 +73,12 @@ def upsert_fight(conn, fight: dict) -> int:
     with conn.cursor() as cur:
         cur.execute(sql, fight)
         row = cur.fetchone()
-        return row["id"] if row else None
+        if row:
+            return row["id"]
+        # Fight already existed — fetch its id so we can still write stats
+        cur.execute("SELECT id FROM fights WHERE fight_url = %s", (fight["fight_url"],))
+        existing = cur.fetchone()
+        return existing["id"] if existing else None
 
 
 def upsert_fight_stats(conn, stats: dict):
