@@ -1,0 +1,14 @@
+beautifulsoup4
+requests
+pandas
+numpy
+scikit-learn
+scipy
+umap-learn
+hdbscan
+psycopg2-binary
+pgvector
+fastapi
+uvicorn
+python-dotenv
+playwright
