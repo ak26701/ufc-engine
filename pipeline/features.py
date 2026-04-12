@@ -346,15 +346,27 @@ def compute_all_features(
 
     wc_lower = [wc.lower() for wc in weight_classes]
 
-    placeholders = ", ".join(["%s"] * len(wc_lower))
-    fighter_query = f"""
-        SELECT id, name, weight_class
-        FROM fighters
-        WHERE LOWER(weight_class) = ANY(ARRAY[{placeholders}])
-        ORDER BY id
+    # fighters.weight_class is often NULL in practice; derive the fighter's
+    # primary weight class from their most recent fight instead.
+    fighter_query = """
+        SELECT
+            fi.id,
+            fi.name,
+            recent.weight_class
+        FROM fighters fi
+        JOIN LATERAL (
+            SELECT f.weight_class
+            FROM fights f
+            WHERE (f.fighter1_id = fi.id OR f.fighter2_id = fi.id)
+              AND f.weight_class IS NOT NULL
+            ORDER BY f.date DESC NULLS LAST
+            LIMIT 1
+        ) recent ON TRUE
+        WHERE LOWER(recent.weight_class) = ANY(%s)
+        ORDER BY fi.id
     """
     with conn.cursor() as cur:
-        cur.execute(fighter_query, wc_lower)
+        cur.execute(fighter_query, (wc_lower,))
         fighters = cur.fetchall()
 
     results: list[dict] = []
