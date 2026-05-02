@@ -1,0 +1,4 @@
+{
+  "outputDirectory": "game",
+  "rewrites": [{ "source": "/(.*)", "destination": "/$1" }]
+}
