@@ -4,23 +4,31 @@
   box-sizing: border-box;
 }
 
-body {
+html, body {
+  width: 100%;
+  height: 100%;
   background: #0a0a0a;
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
-  font-family: 'Georgia', serif;
   overflow: hidden;
+  font-family: 'Georgia', serif;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
 
 #wrapper {
   position: relative;
-  border: 2px solid #333;
+  width: 100%;
+  max-width: 1200px;
   box-shadow: 0 0 40px rgba(255, 160, 0, 0.3);
 }
 
 #gameCanvas {
   display: block;
+  width: 100%;
+  height: auto;
   cursor: crosshair;
+  touch-action: none;
 }

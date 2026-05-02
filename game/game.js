@@ -885,11 +885,13 @@ function drawHUD() {
   ctx.font = '13px Georgia';
   ctx.fillText(`Enemies: ${alive + spawnQueue.length}`, W - 18, 78);
 
-  // Controls hint (bottom)
-  ctx.fillStyle = 'rgba(255,255,255,0.3)';
-  ctx.font = '11px Georgia';
-  ctx.textAlign = 'center';
-  ctx.fillText('WASD/Arrows: Move | Space/W: Jump | 1-4: Element | J: Basic | K: Special | Shift: Dodge', W / 2, H - 8);
+  // Controls hint (desktop only)
+  if (!('ontouchstart' in window) && navigator.maxTouchPoints === 0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = '11px Georgia';
+    ctx.textAlign = 'center';
+    ctx.fillText('WASD/Arrows: Move | Space/W: Jump | 1-4: Element | J: Basic | K: Special | Shift: Dodge', W / 2, H - 8);
+  }
 }
 
 function drawCooldownBar(ctx, x, y, label, cd, maxCd, col) {
@@ -1038,6 +1040,7 @@ function loop(timestamp) {
     player.update(dt, keys, enemies, projectiles, particles);
     player.draw(ctx);
     drawHUD();
+    drawTouchControls();
     drawWaveStart();
     if (phaseTimer <= 0) gamePhase = 'playing';
   }
@@ -1155,6 +1158,7 @@ function loop(timestamp) {
     for (const f of floatTexts) f.draw(ctx);
 
     drawHUD();
+    drawTouchControls();
 
     // Check wave clear
     if (spawnQueue.length === 0 && enemies.every(e => e.dead)) {
@@ -1192,5 +1196,134 @@ canvas.addEventListener('click', () => {
     initGame();
   }
 });
+
+// ─── TOUCH CONTROLS ──────────────────────────────────────────────────────────
+
+// Button layout in canvas-space (1200 x 600). Scaled automatically by CSS.
+const TOUCH_BTNS = [
+  // Movement – left cluster
+  { id: 'left',    x: 15,  y: 475, w: 72, h: 72, key: 'a',     hold: true,  label: '◀' },
+  { id: 'right',   x: 100, y: 475, w: 72, h: 72, key: 'd',     hold: true,  label: '▶' },
+  { id: 'jump',    x: 57,  y: 395, w: 72, h: 72, key: ' ',     hold: false, label: '▲\nJUMP' },
+  // Actions – right cluster
+  { id: 'basic',   x: 1115, y: 475, w: 72, h: 72, key: 'j',     hold: false, label: 'J\nATK' },
+  { id: 'special', x: 1030, y: 475, w: 72, h: 72, key: 'k',     hold: false, label: 'K\nSPEC' },
+  { id: 'dodge',   x: 1115, y: 395, w: 72, h: 72, key: 'shift', hold: false, label: 'DODGE' },
+  // Element strip – bottom center
+  { id: 'e1', x: 418, y: 550, w: 82, h: 40, key: '1', hold: false, label: '1 Water',  elemCol: ELEM.water.color },
+  { id: 'e2', x: 508, y: 550, w: 82, h: 40, key: '2', hold: false, label: '2 Earth',  elemCol: ELEM.earth.color },
+  { id: 'e3', x: 598, y: 550, w: 82, h: 40, key: '3', hold: false, label: '3 Fire',   elemCol: ELEM.fire.color  },
+  { id: 'e4', x: 688, y: 550, w: 82, h: 40, key: '4', hold: false, label: '4 Air',    elemCol: ELEM.air.color   },
+];
+
+const heldTouches = new Map(); // touchId → key
+
+function toCanvasCoords(clientX, clientY) {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: (clientX - r.left) * (W / r.width),
+    y: (clientY - r.top)  * (H / r.height),
+  };
+}
+
+function hitTestBtn(cx, cy) {
+  for (const b of TOUCH_BTNS) {
+    if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) return b;
+  }
+  return null;
+}
+
+function fireTouchKey(key) {
+  if (!player || player.dead) return;
+  if (key === ' ')     player.jump();
+  else if (key === 'j') player.basicAttack(projectiles, particles);
+  else if (key === 'k') player.specialAttack(projectiles, particles);
+  else if (key === 'shift') player.dodge(particles);
+  else if (key === '1') player.elem = 'water';
+  else if (key === '2') player.elem = 'earth';
+  else if (key === '3') player.elem = 'fire';
+  else if (key === '4') player.elem = 'air';
+}
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (!gameStarted) { gameStarted = true; initGame(); return; }
+  if (gamePhase === 'gameover') { initGame(); return; }
+  if (gamePhase === 'wave_start') { phaseTimer = 0; return; }
+  if (gamePhase !== 'playing') return;
+
+  for (const t of e.changedTouches) {
+    const { x, y } = toCanvasCoords(t.clientX, t.clientY);
+    const btn = hitTestBtn(x, y);
+    if (!btn) continue;
+    if (btn.hold) {
+      keys[btn.key] = true;
+      heldTouches.set(t.identifier, btn.key);
+    } else {
+      fireTouchKey(btn.key);
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    const key = heldTouches.get(t.identifier);
+    if (key) { keys[key] = false; heldTouches.delete(t.identifier); }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchcancel', e => {
+  for (const t of e.changedTouches) {
+    const key = heldTouches.get(t.identifier);
+    if (key) { keys[key] = false; heldTouches.delete(t.identifier); }
+  }
+});
+
+function drawTouchControls() {
+  if (gamePhase !== 'playing' && gamePhase !== 'wave_start') return;
+
+  ctx.save();
+  for (const b of TOUCH_BTNS) {
+    const isElem = b.id.startsWith('e');
+    const active = isElem
+      ? player && player.elem === ELEM_ORDER[parseInt(b.key) - 1]
+      : (b.hold && keys[b.key]);
+
+    const baseAlpha = 0.45;
+    ctx.globalAlpha = active ? 0.75 : baseAlpha;
+
+    const col = b.elemCol ?? ELEM[player?.elem ?? 'fire'].color;
+
+    // Background
+    ctx.fillStyle = active ? col : 'rgba(0,0,0,0.5)';
+    ctx.strokeStyle = col;
+    ctx.lineWidth = active ? 2.5 : 1.5;
+    ctx.shadowBlur = active ? 12 : 0;
+    ctx.shadowColor = col;
+    roundRect(ctx, b.x, b.y, b.w, b.h, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    // Label
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = active ? '#000' : '#fff';
+    ctx.globalAlpha = active ? 0.9 : 0.8;
+    ctx.font = `bold ${isElem ? 11 : 13}px Georgia`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const lines = b.label.split('\n');
+    if (lines.length === 2) {
+      ctx.fillText(lines[0], b.x + b.w / 2, b.y + b.h / 2 - 7);
+      ctx.font = `${isElem ? 10 : 10}px Georgia`;
+      ctx.fillText(lines[1], b.x + b.w / 2, b.y + b.h / 2 + 7);
+    } else {
+      ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2);
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
+}
 
 requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
